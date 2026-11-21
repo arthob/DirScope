@@ -14,9 +14,13 @@ const Scape3D = (() => {
   const MARGIN = 1.14;         // slack left around a framed volume
   const ROT = 0.0075;          // radians of orbit per pixel dragged
 
-  let renderer, scene, camera, solid, shell, ghost, outline, bounds, raf = 0;
+  let renderer, scene, camera, solid, shell, ghost, glow, beam, outline, bounds, raf = 0;
+  const BEAMS = 40;            // locator columns, over the hottest files only
   let geo, matSolid, matShell, matGhost, cap = 0;
-  let boxes = [], solidIdx = [], ghostIdx = [], focus = -1, hover = -1, levels = 1, fitBB = null;
+  const GLOW_CAP = 512;        // the ranking is capped server side, so this never grows
+  const HOT = new THREE.Color(1, 0.66, 0.22);
+  let boxes = [], solidIdx = [], ghostIdx = [], glowIdx = [], focus = -1, hover = -1;
+  let levels = 1, fitBB = null, glowMap = new Map();
   let colorOf = () => [140, 140, 140], onPick = () => {}, onHover = () => {};
   const cam = { theta: -0.9, phi: 1.02, dist: 240, tx: 0, ty: 0, tz: 0 };
   const want = { dist: 240, tx: 0, ty: 0, tz: 0 };
@@ -131,6 +135,11 @@ const Scape3D = (() => {
       if (lit === 1) {
         // Buried terraces sit in their own shadow, which is what gives the stack its layers.
         tmpC.multiplyScalar(SINK + (1 - SINK) * (levels < 2 ? 1 : b.depth / (levels - 1)));
+        if (glowMap.size) {
+          const g = glowMap.get(b.node[0]);
+          if (g === undefined) tmpC.multiplyScalar(0.28);
+          else tmpC.lerp(HOT, 0.2 + 0.35 * g).multiplyScalar(1 + 0.35 * g);
+        }
         if (idx[n] === hover) tmpC.lerp(WHITE, 0.4);
       } else {
         tmpC.lerp(NEUTRAL, GHOST_WASH);
@@ -142,6 +151,45 @@ const Scape3D = (() => {
     mesh.visible = idx.length > 0;
   }
 
+  // A halo around the ranked blocks: additive, so overlapping ones build up and
+  // the hottest files read as hot even from across the whole drive.
+  function fillGlow() {
+    glowIdx = glowMap.size
+      ? boxes.reduce((a, b, i) => (glowMap.has(b.node[0]) && a.push(i), a), []).slice(0, GLOW_CAP)
+      : [];
+    glow.count = glowIdx.length;
+    for (let n = 0; n < glowIdx.length; n++) {
+      const b = boxes[glowIdx[n]], g = glowMap.get(b.node[0]) || 0;
+      const pad = 0.6 + 3.6 * g;
+      tmpP.set(b.x, b.y, b.z);
+      tmpS.set(Math.max(MIN_SIDE, b.w) + pad, b.h + pad, Math.max(MIN_SIDE, b.d) + pad);
+      glow.setMatrixAt(n, tmpM.compose(tmpP, tmpQ, tmpS));
+      glow.setColorAt(n, tmpC.copy(HOT).multiplyScalar(0.25 + 0.75 * g));
+    }
+    glow.instanceMatrix.needsUpdate = true;
+    if (glow.instanceColor) glow.instanceColor.needsUpdate = true;
+    glow.visible = glowIdx.length > 0;
+
+    // A rim on a small block is invisible in a city of twenty thousand. The
+    // beams draw through everything, so the hottest files can be found rather
+    // than merely marked.
+    const hottest = glowIdx.slice()
+      .sort((a, c) => (glowMap.get(boxes[c].node[0]) || 0) - (glowMap.get(boxes[a].node[0]) || 0))
+      .slice(0, BEAMS);
+    beam.count = hottest.length;
+    for (let n = 0; n < hottest.length; n++) {
+      const b = boxes[hottest[n]], g = glowMap.get(b.node[0]) || 0;
+      const top = SIZE * 1.16, base = b.y + b.h / 2;
+      tmpP.set(b.x, (base + top) / 2, b.z);
+      tmpS.set(0.45 + 1.1 * g, Math.max(0.1, top - base), 0.45 + 1.1 * g);
+      beam.setMatrixAt(n, tmpM.compose(tmpP, tmpQ, tmpS));
+      beam.setColorAt(n, tmpC.copy(HOT).multiplyScalar(0.1 + 0.3 * g));
+    }
+    beam.instanceMatrix.needsUpdate = true;
+    if (beam.instanceColor) beam.instanceColor.needsUpdate = true;
+    beam.visible = hottest.length > 0;
+  }
+
   function refresh() {
     ensureCapacity(boxes.length);
     solidIdx = [];
@@ -151,6 +199,7 @@ const Scape3D = (() => {
     fill(shell, solidIdx, 0, EDGE * 2);
     fill(solid, solidIdx, 1, 0);
     fill(ghost, ghostIdx, 2, 0);
+    fillGlow();
     const b = focus >= 0 ? boxes[focus] : null;
     outline.visible = !!b;
     if (b) {
@@ -280,6 +329,29 @@ const Scape3D = (() => {
     });
     ensureCapacity(8192);
 
+    // Back faces only: the near side is occluded by the block itself, so what
+    // survives the depth test is the rim standing proud of it. A filled additive
+    // box over an already-lit block just saturates to white.
+    glow = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({
+      transparent: true, opacity: 0.75, depthWrite: false,
+      side: THREE.BackSide, blending: THREE.AdditiveBlending,
+    }), GLOW_CAP);
+    glow.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    glow.count = 0;
+    glow.frustumCulled = false;
+    glow.renderOrder = 2;
+    scene.add(glow);
+
+    beam = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({
+      transparent: true, opacity: 0.5, depthWrite: false, depthTest: false,
+      blending: THREE.AdditiveBlending,
+    }), BEAMS);
+    beam.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    beam.count = 0;
+    beam.frustumCulled = false;
+    beam.renderOrder = 3;
+    scene.add(beam);
+
     outline = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
       new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 }));
     outline.visible = false;
@@ -315,5 +387,13 @@ const Scape3D = (() => {
   const start = () => { if (!raf && renderer) step(); };
   const stop = () => { cancelAnimationFrame(raf); raf = 0; };
 
-  return { mount, build, select, resize, start, stop, get ready() { return !!renderer; } };
+  // A full refresh, not just the halos: the solid pass dims what is not ranked
+  // and heats what is, so its instance colours depend on this map too.
+  function setGlow(map) {
+    glowMap = map || new Map();
+    if (renderer) refresh();
+  }
+
+  return { mount, build, select, setGlow, resize, start, stop,
+    get ready() { return !!renderer; } };
 })();

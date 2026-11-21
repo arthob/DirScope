@@ -59,13 +59,20 @@ const Treemap = (() => {
   }
 
   // Paints the leaves into ctx and returns a pixel -> leaf index lookup for hit testing.
-  function paint(ctx, w, h, map, colorOf, dimmed) {
+  function paint(ctx, w, h, map, colorOf, dimmed, glowOf) {
     const img = ctx.createImageData(w, h), px = img.data, hit = new Int32Array(w * h).fill(-1);
     map.leaves.forEach((leaf, idx) => {
       const x0 = Math.round(leaf.x), x1 = Math.min(w, Math.round(leaf.x + leaf.w));
       const y0 = Math.round(leaf.y), y1 = Math.min(h, Math.round(leaf.y + leaf.h));
       if (x1 <= x0 || y1 <= y0) return;
-      const [r, g, b] = colorOf(leaf.node), s = leaf.s, k = dimmed && dimmed(leaf.node) ? 0.28 : 1;
+      let [r, g, b] = colorOf(leaf.node);
+      const s = leaf.s, gl = glowOf ? glowOf(leaf.node) : 0;
+      let k = dimmed && dimmed(leaf.node) ? 0.28 : 1;
+      if (gl > 0) {
+        // Heat the block itself; the halo around it is drawn over the top afterwards.
+        r += (255 - r) * gl * 0.7; g += (226 - g) * gl * 0.55; b += (140 - b) * gl * 0.25;
+        k *= 1 + gl * 0.85;
+      }
       for (let py = y0; py < y1; py++) {
         const ny = -(2 * s[3] * (py + 0.5) + s[2]);
         let o = (py * w + x0) * 4, hi = py * w + x0;

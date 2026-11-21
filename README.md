@@ -26,6 +26,9 @@ nothing else: no packages, no build step.
 - **Map / Volumes** switches between the flat treemap and the 3D one. In Volumes, drag
   to orbit, scroll to zoom, shift-drag to pan. Selecting anything in the tree flies the
   camera to it and drops everything outside it to glass.
+- **Big and cold** ranks files by size multiplied by years since last changed, and glows
+  them in both views, brightest first. In Volumes the top forty also get a beam you can
+  see through the structure. It is scoped to wherever you have zoomed to.
 
 ## Design
 
@@ -38,6 +41,13 @@ nothing else: no packages, no build step.
   block is its rectangle on the flat map, depth in the tree becomes height, and the two
   views therefore always agree. Blocks are drawn as two instanced meshes, one solid and
   one glass, so focusing is a repartition rather than a rebuild.
+- **Big and cold scores on last-modified time, deliberately, not last-access.** Access
+  updates are enabled on this machine, but something sweeps every file: measured on
+  2026-11-21, the oldest last-access time across 31,119 files under Documents was 11
+  weeks, while modification times spanned years. Last-access therefore records machine
+  activity, not whether a person opened anything, and a ranking built on it would show
+  nothing as stale. Ages are clamped to 30 years, because restored and extracted files
+  carry timestamps centuries out and one of those would own the ranking.
 - `web/three.min.js` is vendored (three.js r128, MIT) rather than fetched from a CDN, so
   the app still works with no network. It is the only dependency, and there is still
   nothing to install and nothing to build.

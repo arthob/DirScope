@@ -9,6 +9,7 @@ const st = {
   folders: new Map(), open: new Set([0]), rows: [],
   exts: [], extColor: new Map(), highlight: null, map: null, hit: null, hover: -1,
   tree: null, view3d: false,
+  panel: "types", stale: null, glow: new Map(),
 };
 
 async function api(path, body) {
@@ -231,6 +232,7 @@ async function loadMap() {
   $("map-empty").hidden = data.tree[2] > 0;
   st.map = data.tree[2] > 0 ? Treemap.layout(data.tree, w, h) : { leaves: [], rects: new Map() };
   drawMap();
+  if (st.panel === "stale") await loadStale();   // the ranking is scoped to the zoom
   if (st.view3d) build3d();
 }
 
@@ -245,6 +247,7 @@ function build3d() {
   }
   Scape3D.resize();
   Scape3D.build(st.tree);
+  Scape3D.setGlow(st.glow);
   if (st.selected) Scape3D.select(st.selected.id);
 }
 
@@ -266,9 +269,71 @@ function drawMap() {
   for (const c of [$("map"), $("overlay")]) { c.width = w; c.height = h; }
   const ctx = $("map").getContext("2d");
   ctx.clearRect(0, 0, w, h);
-  const dim = st.highlight === null ? null : n => n[3] !== st.highlight;
-  st.hit = Treemap.paint(ctx, w, h, st.map, n => colorOf(n[3]), dim);
+  const cold = st.panel === "stale" && st.glow.size > 0;
+  const dim = cold ? n => !st.glow.has(n[0])
+    : st.highlight === null ? null : n => n[3] !== st.highlight;
+  const glow = cold ? n => st.glow.get(n[0]) || 0 : null;
+  st.hit = Treemap.paint(ctx, w, h, st.map, n => colorOf(n[3]), dim, glow);
+  if (cold) drawHalos(ctx);
   drawOverlay();
+}
+
+// Halos go on the map canvas, not the overlay: the overlay is redrawn on every
+// hover move and 250 blurred strokes there would cost a frame each time.
+function drawHalos(ctx) {
+  const dpr = window.devicePixelRatio || 1;
+  ctx.save();
+  for (const [id, g] of st.glow) {
+    const r = st.map.rects.get(id);
+    if (!r) continue;
+    ctx.shadowColor = `rgba(255, 196, 92, ${0.5 + 0.5 * g})`;
+    ctx.shadowBlur = (5 + 24 * g) * dpr;
+    ctx.strokeStyle = `rgba(255, 238, 198, ${0.45 + 0.55 * g})`;
+    ctx.lineWidth = Math.max(1, (0.75 + g) * dpr);
+    ctx.strokeRect(r[0] + 0.5, r[1] + 0.5, Math.max(1, r[2] - 1), Math.max(1, r[3] - 1));
+  }
+  ctx.restore();
+}
+
+async function loadStale() {
+  st.stale = await api(`stale?id=${st.zoom}&limit=250`);
+  const max = st.stale.max || 1;
+  st.glow = new Map(st.stale.items.map(it => [it.id, Math.pow(it.score / max, 0.45)]));
+  renderStale();
+  drawMap();
+  if (st.view3d && Scape3D.ready) Scape3D.setGlow(st.glow);
+}
+
+const years = a => a >= 1 ? a.toFixed(1) + " y" : Math.round(a * 12) + " mo";
+
+function renderStale() {
+  const items = (st.stale && st.stale.items) || [];
+  $("stale-empty").hidden = items.length > 0;
+  $("stale").replaceChildren(...items.map((it, i) => {
+    const g = st.glow.get(it.id) || 0;
+    const b = document.createElement("button");
+    b.className = "cold";
+    b.innerHTML = `<span class="rank">${i + 1}</span><i class="heat" style="opacity:${(0.25 + 0.75 * g).toFixed(2)}"></i>
+      <span class="cold-name"></span><span>${bytes(it.size)}</span><span class="muted">${years(it.age)}</span>`;
+    b.querySelector(".cold-name").textContent = it.name;
+    b.title = `${it.path}\n${bytes(it.size)} · unchanged ${years(it.age)} · ${bytes(it.score)}-years`;
+    b.onclick = () => reveal(it.id);
+    return b;
+  }));
+}
+
+function setPanel(mode) {
+  st.panel = mode;
+  for (const [id, m] of [["btn-types", "types"], ["btn-cold", "stale"]]) {
+    $(id).classList.toggle("on", m === mode);
+    $(id).setAttribute("aria-pressed", String(m === mode));
+  }
+  $("legend").hidden = mode !== "types";
+  $("stale-wrap").hidden = mode !== "stale";
+  if (mode === "stale") return loadStale();
+  st.glow = new Map();
+  drawMap();
+  if (st.view3d && Scape3D.ready) Scape3D.setGlow(st.glow);
 }
 
 function drawOverlay() {
@@ -402,6 +467,8 @@ document.addEventListener("keydown", ev => {
 
 $("btn-2d").onclick = () => setView(false);
 $("btn-3d").onclick = () => setView(true);
+$("btn-types").onclick = () => setPanel("types");
+$("btn-cold").onclick = () => setPanel("stale");
 $("btn-reveal").onclick = () => st.selected && api("reveal", { id: st.selected.id });
 $("btn-delete").onclick = recycle;
 $("btn-rescan").onclick = () => startScan(st.status.root);

@@ -6,6 +6,7 @@ Run: python server.py            (opens an Edge app window, exits when it closes
 """
 import argparse
 import ctypes
+import heapq
 import json
 import os
 import queue
@@ -25,11 +26,21 @@ WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 TOKEN = secrets.token_urlsafe(16)
 MIN_AREA = 6           # treemap pixels below which an item is merged into its parent
 MAX_CHILDREN = 3000    # rows returned per folder in the tree panel
+MAX_STALE = 250        # files returned in the large-and-stale ranking
+YEAR = 365.25 * 86400
+MAX_AGE = 30 * YEAR    # ceiling on an age, so a bogus timestamp cannot own the ranking
 LOCK = threading.RLock()
 
 
+def int_arg(query, name, default, low, high):
+    try:
+        return max(low, min(high, int(query[name][0])))
+    except (KeyError, ValueError, IndexError, TypeError):
+        return default
+
+
 class Node:
-    __slots__ = ("id", "name", "parent", "children", "size", "files", "ext")
+    __slots__ = ("id", "name", "parent", "children", "size", "files", "ext", "mt")
 
     def __init__(self, name, parent, is_dir):
         self.name = name
@@ -38,6 +49,7 @@ class Node:
         self.size = 0
         self.files = 0 if is_dir else 1
         self.ext = -1
+        self.mt = 0.0
 
 
 class Scan:
@@ -89,6 +101,7 @@ class Scan:
                     n = Node(e.name, d, False)
                     st = e.stat(follow_symlinks=False)
                     n.size = on_disk(e.path) if st.st_file_attributes & NOT_LOCAL else st.st_size
+                    n.mt = st.st_mtime
                     added += n.size
                     files.append(n)
                     file_exts.append(os.path.splitext(e.name)[1].lower() or "(none)")
@@ -197,6 +210,36 @@ class Scan:
             return [node.id, node.name, node.size, -1, kids]
 
         return build(n)
+
+    def stale(self, n, limit):
+        """Files ranked by byte-years: size x years since last modified.
+
+        Deliberately NOT last-access time. Access updates are enabled on this
+        machine, but something (indexing, Defender, a sync client) touches every
+        file, so the oldest atime under Documents was 11 weeks while mtimes span
+        years. atime therefore records machine activity, not whether a person
+        opened anything, and a ranking built on it would show nothing as stale.
+        """
+        now = time.time()
+
+        def candidates():
+            stack = [n]
+            while stack:
+                m = stack.pop()
+                if m.children is None:
+                    if m.size > 0 and m.mt:
+                        # Clamped: restored and extracted files carry timestamps
+                        # centuries out, and one of those would own the ranking.
+                        age = min(MAX_AGE, max(0.0, now - m.mt)) / YEAR
+                        yield (m.size * age, age, m)
+                else:
+                    stack.extend(m.children)
+
+        top = heapq.nlargest(limit, candidates(), key=lambda t: t[0])
+        return {"max": top[0][0] if top else 0,
+                "items": [{"id": m.id, "name": m.name, "size": m.size,
+                           "age": round(age, 2), "score": score, "path": self.path(m)}
+                          for score, age, m in top]}
 
     def extensions(self):
         order = sorted(range(len(self.exts)), key=lambda i: self.ext_bytes[i], reverse=True)
@@ -344,6 +387,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, SCAN.extensions())
             if n is None:
                 return self.send(404, {"error": "unknown id"})
+            if route == "stale":
+                return self.send(200, SCAN.stale(n, int_arg(q, "limit", 100, 1, MAX_STALE)))
             if route == "folder":
                 return self.send(200, SCAN.folder(n))
             if route == "ancestry":

@@ -1,6 +1,7 @@
 <!doctype html>
 <!-- impeccable-disable marquee -- indeterminate scan progress: the total is unknown until the scan ends; prefers-reduced-motion stops it -->
 <!-- impeccable-disable cramped-padding -- .seg is a segmented-control track, not a text container: its children are 26px buttons carrying their own 14px padding, and the 8px floor would make a 42px control in a 32px button row -->
+<!-- impeccable-disable dark-glow -- the .heat dot's zero-offset shadow is the datum, not decoration: it is the legend swatch for the glow drawn on the map and the halo drawn in 3D, and a flat dot would stop matching what it stands for -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -51,8 +52,19 @@
       <div class="tree-head"><span>Name</span><span>Size</span><span>Files</span></div>
       <div id="tree" class="tree" role="tree" tabindex="0" aria-label="Folder tree"></div>
       <section class="legend">
-        <h2>File types</h2>
+        <div class="legend-head">
+          <div class="seg seg-sm" role="group" aria-label="Side panel">
+            <button id="btn-types" class="on" aria-pressed="true">File types</button>
+            <button id="btn-cold" aria-pressed="false">Big and cold</button>
+          </div>
+        </div>
         <div id="legend" class="legend-list"></div>
+        <div id="stale-wrap" class="legend-list" hidden>
+          <p class="note">Ranked by size multiplied by years since last changed. Windows last-access
+            times are swept by background tasks here, so they cannot tell you what you last opened.</p>
+          <div id="stale"></div>
+          <p id="stale-empty" class="note" hidden>Nothing to rank in this folder.</p>
+        </div>
       </section>
       <div id="split" class="split" role="separator" aria-orientation="vertical" title="Drag to resize"></div>
     </aside>
