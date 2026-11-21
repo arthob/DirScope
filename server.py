@@ -17,12 +17,16 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import webbrowser
 from ctypes import wintypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+# Frozen by PyInstaller the assets are unpacked to _MEIPASS, not next to the exe.
+FROZEN = getattr(sys, "frozen", False)
+WEB = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))), "web")
+VERSION = "1.0.0"
 TOKEN = secrets.token_urlsafe(16)
 MIN_AREA = 6           # treemap pixels below which an item is merged into its parent
 MAX_CHILDREN = 3000    # rows returned per folder in the tree panel
@@ -448,6 +452,65 @@ class Handler(BaseHTTPRequestHandler):
         self.send(404, {"error": "unknown route"})
 
 
+def say(text, title="DirScope"):
+    """The exe is windowed, so it owns no console. If it was launched from one,
+    borrow that and print; if it was double-clicked there is nobody to print to,
+    and a silent failure is the same as no answer at all, so use a box."""
+    spoke = False
+    if FROZEN and ctypes.windll.kernel32.AttachConsole(-1):
+        try:
+            sys.stdout = open("CONOUT$", "w", encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+    if sys.stdout is not None:
+        try:
+            print(text, flush=True)
+            spoke = True
+        except (OSError, ValueError):
+            pass
+    if FROZEN and not spoke:
+        ctypes.windll.user32.MessageBoxW(None, text, title, 0x40)
+
+
+def doctor():
+    """Report what this machine can and cannot do, rather than assuming."""
+    checks, ok = [], True
+    def check(name, passed, detail, fatal=True):
+        nonlocal ok
+        if fatal and not passed:
+            ok = False
+        checks.append("%-4s %-22s %s" % ("PASS" if passed else ("FAIL" if fatal else "WARN"), name, detail))
+
+    check("Windows", os.name == "nt", "%s %s" % (os.name, sys.getwindowsversion().build if os.name == "nt" else ""))
+    check("Python", sys.version_info >= (3, 9), sys.version.split()[0] + (" (bundled)" if FROZEN else ""))
+    missing = [f for f in ("index.html", "app.css", "app.js", "treemap.js", "scape3d.js", "three.min.js")
+               if not os.path.isfile(os.path.join(WEB, f))]
+    check("Web assets", not missing, WEB if not missing else "missing: " + ", ".join(missing))
+    edge = find_edge()
+    check("Edge app window", bool(edge), edge or "not found, will open your default browser instead", fatal=False)
+    try:
+        s = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
+        port = s.server_address[1]
+        s.server_close()
+        check("Localhost port", True, "bound 127.0.0.1:%d" % port)
+    except OSError as e:
+        check("Localhost port", False, str(e))
+    try:
+        d = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "DirScope")
+        os.makedirs(d, exist_ok=True)
+        check("Writable profile dir", os.access(d, os.W_OK), d)
+    except OSError as e:
+        check("Writable profile dir", False, str(e))
+    try:
+        check("Disk size API", len(drives()) > 0, "%d drive(s) readable" % len(drives()))
+    except Exception as e:
+        check("Disk size API", False, repr(e))
+
+    say("DirScope %s doctor\n\n" % VERSION + "\n".join(checks) +
+        "\n\n" + ("Ready to run." if ok else "Something above needs fixing."))
+    return 0 if ok else 1
+
+
 def find_edge():
     for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")):
         exe = os.path.join(base or "", "Microsoft", "Edge", "Application", "msedge.exe")
@@ -461,7 +524,11 @@ def main():
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--no-browser", action="store_true")
     ap.add_argument("--token", help="fixed token, for testing")
+    ap.add_argument("--doctor", action="store_true",
+                    help="report what this machine can do, then exit")
     args = ap.parse_args()
+    if args.doctor:
+        return doctor()
     global TOKEN
     TOKEN = args.token or TOKEN
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
@@ -487,4 +554,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        sys.exit(main() or 0)
+    except SystemExit:
+        raise
+    except BaseException:
+        # Frozen there is no console, so an unhandled error would otherwise be a
+        # window that never appears. Whoever is running it can read this one out.
+        say("DirScope could not start.\n\n" + traceback.format_exc() +
+            "\nRun DirScope.exe --doctor for what this machine can do.", "DirScope failed")
+        sys.exit(1)

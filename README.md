@@ -5,14 +5,47 @@ cushion treemap WinDirStat made famous, in a current UI with light and dark them
 Switch the map to **Volumes** and the same partition stands up as solid blocks inside
 a cube of the whole scan.
 
-## Run
+Windows only. It uses the Windows disk, Recycle Bin and volume APIs directly.
+
+## Install
+
+Download `DirScope.exe` and double-click it. Nothing to install, no Python needed,
+and it writes nothing outside its own folder under `%LOCALAPPDATA%\DirScope`.
+
+Windows will show a blue **"Windows protected your PC"** box the first time, because
+the file is not code-signed. Click **More info**, then **Run anyway**. A signing
+certificate costs a few hundred a year and this is a disk usage tool, so it is not
+signed and that warning is expected.
+
+If it will not start, open a terminal where the exe is and run:
+
+```
+DirScope.exe --doctor
+```
+
+That prints what the machine can and cannot do, one line per check, and exits
+non-zero if something is actually wrong. Double-clicked, it says the same thing in a
+message box.
+
+## Run from source
 
 ```
 python server.py
 ```
 
-Opens an Edge app window. The server exits when the window closes. Python 3.12+ and
-nothing else: no packages, no build step.
+Python 3.9+ and nothing else: no packages, no build step. Opens an Edge app window,
+and the server exits when the window closes.
+
+## Build the exe
+
+```
+python build.py
+```
+
+Creates `.build-venv`, installs PyInstaller into it, and writes `dist/DirScope.exe`
+(about 8 MB). The virtual environment is local to the checkout, so building on a
+second machine does not change that machine's Python. The icon is committed as
+`web/icon.ico`; regenerate it with `python tools/make_icon.py` only if the SVG changes.
 
 ## Use
 
