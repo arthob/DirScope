@@ -10,6 +10,7 @@ const Scape3D = (() => {
   const MIN_SIDE = 0.05;       // boxes thinner than this are not worth an instance
 
   let renderer, scene, camera, solid, ghost, outline, bounds, raf = 0;
+  let geo, matSolid, matGhost, cap = 0;
   let boxes = [], solidIdx = [], ghostIdx = [], focus = -1, hover = -1;
   let colorOf = () => [140, 140, 140], onPick = () => {}, onHover = () => {};
   const cam = { theta: -0.9, phi: 1.02, dist: 210, tx: 0, ty: 0, tz: 0 };
@@ -60,6 +61,26 @@ const Scape3D = (() => {
 
   // --- instances ---------------------------------------------------------
 
+  // An InstancedMesh fixes its instance count at construction, and a whole drive can
+  // out-grow any number picked up front, so grow the pair to fit rather than truncate.
+  function ensureCapacity(n) {
+    if (n <= cap) return;
+    cap = Math.max(8192, Math.ceil(n * 1.3));
+    for (const m of [solid, ghost]) {
+      if (!m) continue;
+      scene.remove(m);
+      m.dispose();
+    }
+    solid = new THREE.InstancedMesh(geo, matSolid, cap);
+    ghost = new THREE.InstancedMesh(geo, matGhost, cap);
+    for (const m of [solid, ghost]) {
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      m.count = 0;
+      m.frustumCulled = false;
+      scene.add(m);
+    }
+  }
+
   function fill(mesh, idx, lit) {
     mesh.count = idx.length;
     for (let n = 0; n < idx.length; n++) {
@@ -79,6 +100,7 @@ const Scape3D = (() => {
   }
 
   function refresh() {
+    ensureCapacity(boxes.length);
     solidIdx = [];
     ghostIdx = [];
     for (let i = 0; i < boxes.length; i++) (inFocus(i) ? solidIdx : ghostIdx).push(i);
@@ -202,16 +224,12 @@ const Scape3D = (() => {
     scene.add(rim);
 
     const box = new THREE.BoxGeometry(1, 1, 1);
-    const cap = 60000;
-    solid = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ roughness: 0.58, metalness: 0.05 }), cap);
-    ghost = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({
+    geo = box;
+    matSolid = new THREE.MeshStandardMaterial({ roughness: 0.58, metalness: 0.05 });
+    matGhost = new THREE.MeshStandardMaterial({
       roughness: 1, metalness: 0, transparent: true, opacity: GHOST, depthWrite: false,
-    }), cap);
-    for (const m of [solid, ghost]) {
-      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      m.count = 0;
-      scene.add(m);
-    }
+    });
+    ensureCapacity(8192);
 
     outline = new THREE.LineSegments(new THREE.EdgesGeometry(box),
       new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 }));
