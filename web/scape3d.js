@@ -210,9 +210,12 @@ const Scape3D = (() => {
       const dx = ev.clientX - px, dy = ev.clientY - py;
       px = ev.clientX; py = ev.clientY;
       moved += Math.abs(dx) + Math.abs(dy);
+      // Grab and drag: the structure follows the cursor, so the camera orbits
+      // the opposite way. phi is measured from +Y, so a smaller phi is a higher
+      // camera, which is what dragging down has to produce.
       if (mode === 1) {
-        cam.theta += dx * ROT;
-        cam.phi = Math.min(Math.PI - 0.06, Math.max(0.06, cam.phi + dy * ROT));
+        cam.theta -= dx * ROT;
+        cam.phi = Math.min(Math.PI - 0.06, Math.max(0.06, cam.phi - dy * ROT));
         return;
       }
       // Pan across the camera's own screen plane, scaled so a pixel of drag moves
