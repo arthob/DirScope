@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- impeccable-disable marquee -- indeterminate scan progress: the total is unknown until the scan ends; prefers-reduced-motion stops it -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DirScope</title>
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="brand"><img src="icon.svg" alt="" width="20" height="20">DirScope</div>
+    <nav id="crumbs" class="crumbs" aria-label="Treemap zoom"></nav>
+    <div class="actions" id="actions" hidden>
+      <button id="btn-reveal" title="Show the selection in File Explorer">Show in Explorer</button>
+      <button id="btn-delete" class="danger" title="Move the selection to the Recycle Bin (Del)">Recycle</button>
+      <button id="btn-rescan" title="Scan the same folder again">Rescan</button>
+      <button id="btn-new" class="primary">New scan</button>
+    </div>
+  </header>
+
+  <main id="view-start" class="start" hidden>
+    <h1>What should we measure?</h1>
+    <p class="lede">Pick a drive or a folder. Nothing changes on disk unless you choose to recycle something.</p>
+    <div id="drives" class="drives"></div>
+    <form id="pick" class="pick">
+      <input id="path" spellcheck="false" autocomplete="off" placeholder="Or paste a folder path, e.g. C:\Users\artho\Downloads" aria-label="Folder path">
+      <button type="button" id="btn-browse">Browse</button>
+      <button type="submit" class="primary">Scan</button>
+    </form>
+    <p id="start-error" class="error" role="alert"></p>
+  </main>
+
+  <main id="view-scan" class="scanning" hidden>
+    <p class="scan-label">Scanning <span id="scan-root"></span></p>
+    <p class="scan-bytes" id="scan-bytes">0 B</p>
+    <p class="scan-stats" id="scan-stats"></p>
+    <div class="sweep" aria-hidden="true"><i></i></div>
+    <p class="scan-current" id="scan-current"></p>
+    <button id="btn-cancel">Cancel</button>
+  </main>
+
+  <main id="view-result" class="result" hidden>
+    <aside class="side">
+      <div class="tree-head"><span>Name</span><span>Size</span><span>Files</span></div>
+      <div id="tree" class="tree" role="tree" tabindex="0" aria-label="Folder tree"></div>
+      <section class="legend">
+        <h2>File types</h2>
+        <div id="legend" class="legend-list"></div>
+      </section>
+      <div id="split" class="split" role="separator" aria-orientation="vertical" title="Drag to resize"></div>
+    </aside>
+    <section class="map-wrap" id="map-wrap">
+      <canvas id="map"></canvas>
+      <canvas id="overlay"></canvas>
+      <div id="tip" class="tip" hidden></div>
+      <p id="map-empty" class="map-empty" hidden>This folder is empty.</p>
+    </section>
+  </main>
+
+  <footer class="status"><span id="status-left"></span><span id="status-right"></span></footer>
+
+  <dialog id="confirm">
+    <form method="dialog">
+      <h2>Move to the Recycle Bin?</h2>
+      <p id="confirm-name" class="confirm-name"></p>
+      <p id="confirm-path" class="confirm-path"></p>
+      <p class="muted">You can restore it from the Recycle Bin. Windows will warn you first if it is too large to recycle.</p>
+      <div class="dialog-actions">
+        <button value="cancel" autofocus>Cancel</button>
+        <button value="ok" class="danger-solid">Recycle</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="treemap.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
