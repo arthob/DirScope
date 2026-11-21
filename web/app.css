@@ -13,8 +13,23 @@
   --meter: #2563eb;
   --danger: #b42318;
   --on-danger: #ffffff;
+  --faint: #626a74;
+  --panel: rgb(255 255 255 / 0.88);
+  --stage: #e8ebf0;
+  --shadow: 0 2px 6px rgb(16 24 40 / 0.14);
   --radius: 8px;
+  --pill: 9999px;
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+/* Micro-label: a tier below --muted, told apart by tracking and size as much as
+   by colour, so both stay legible against the surface they sit on. */
+.tree-head, .legend h2 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--faint);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -33,6 +48,10 @@
     --meter: #6b9cf5;
     --danger: #f2796d;
     --on-danger: #0e1012;
+    --faint: #868e98;
+    --panel: rgb(22 25 28 / 0.9);
+    --stage: #090b0d;
+    --shadow: 0 2px 8px rgb(0 0 0 / 0.55);
   }
 }
 
@@ -52,9 +71,9 @@ body {
 button, input { font: inherit; color: inherit; }
 button {
   min-height: 32px;
-  padding: 0 14px;
+  padding: 0 16px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--pill);
   background: var(--surface);
   cursor: pointer;
   transition: background-color 120ms ease-out, border-color 120ms ease-out;
@@ -81,7 +100,14 @@ button.danger-solid { background: var(--danger); border-color: var(--danger); co
 .crumbs button:last-child { color: var(--text); font-weight: 600; }
 .crumbs button:hover { background: var(--hover); color: var(--text); }
 .crumbs .sep { padding: 0 2px; opacity: 0.6; }
-.actions { display: flex; gap: 8px; }
+.actions { display: flex; align-items: center; gap: 8px; }
+
+/* Segmented view switch: one control, two states, the active one filled. */
+.seg { display: flex; gap: 2px; padding: 4px; margin-right: 4px; border: 1px solid var(--line); border-radius: var(--pill); background: var(--surface-2); }
+.seg button { min-height: 26px; padding: 0 14px; border: 0; background: none; color: var(--muted); font-size: 12px; font-weight: 600; }
+.seg button:hover { background: var(--hover); color: var(--text); }
+.seg button.on { background: var(--accent); color: var(--on-accent); }
+.seg button.on:hover { background: var(--accent); color: var(--on-accent); }
 
 /* Start */
 .start { width: min(880px, 100% - 32px); margin: 0 auto; padding: 56px 0; }
@@ -119,7 +145,7 @@ button.danger-solid { background: var(--danger); border-color: var(--danger); co
 .scanning { align-self: center; justify-self: center; width: min(560px, 100% - 32px); text-align: center; }
 .scanning p { margin: 0; }
 .scan-label { color: var(--muted); }
-.scan-bytes { font-size: 44px; font-weight: 600; letter-spacing: -0.02em; margin: 4px 0 !important; }
+.scan-bytes { font-size: 52px; font-weight: 600; letter-spacing: -0.025em; margin: 4px 0 !important; }
 .scan-stats { color: var(--muted); }
 .scan-current {
   margin: 16px 0 24px !important;
@@ -148,12 +174,7 @@ button.danger-solid { background: var(--danger); border-color: var(--danger); co
 .split { position: absolute; top: 0; right: -4px; bottom: 0; z-index: 3; width: 8px; cursor: col-resize; }
 .split:hover, .split.dragging { background: var(--accent); opacity: 0.4; }
 .tree-head, .row { display: grid; grid-template-columns: minmax(0, 1fr) 128px 60px; align-items: center; }
-.tree-head {
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 12px;
-}
+.tree-head { padding: 9px 12px 7px; border-bottom: 1px solid var(--line); }
 .tree-head span:not(:first-child), .row > :not(:first-child) { text-align: right; }
 .tree { overflow: auto; padding: 4px 0; outline: none; }
 .row { height: 28px; padding: 0 12px; cursor: default; white-space: nowrap; user-select: none; }
@@ -184,7 +205,7 @@ button.danger-solid { background: var(--danger); border-color: var(--danger); co
 .more { padding: 4px 12px; color: var(--muted); font-size: 12px; }
 
 .legend { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; border-top: 1px solid var(--line); }
-.legend h2 { margin: 0; padding: 10px 12px 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.legend h2 { margin: 0; padding: 12px 12px 6px; }
 .legend-list { overflow: auto; padding-bottom: 6px; }
 .ext {
   display: grid;
@@ -203,17 +224,39 @@ button.danger-solid { background: var(--danger); border-color: var(--danger); co
 .ext.active { background: var(--select); }
 .ext .muted { color: var(--muted); }
 
-.map-wrap { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg); }
+.map-wrap { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--stage); }
 .map-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 #overlay { cursor: pointer; }
-.tip {
+#scape { cursor: grab; touch-action: none; }
+#scape:active { cursor: grabbing; }
+.hint {
   position: absolute;
   z-index: 2;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 5px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.tip {
+  position: absolute;
+  z-index: 3;
   max-width: 420px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--surface);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2), 0 4px 12px rgb(0 0 0 / 0.16);
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
   pointer-events: none;
   font-size: 13px;
 }

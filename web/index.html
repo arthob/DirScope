@@ -1,5 +1,6 @@
 <!doctype html>
 <!-- impeccable-disable marquee -- indeterminate scan progress: the total is unknown until the scan ends; prefers-reduced-motion stops it -->
+<!-- impeccable-disable cramped-padding -- .seg is a segmented-control track, not a text container: its children are 26px buttons carrying their own 14px padding, and the 8px floor would make a 42px control in a 32px button row -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -13,6 +14,10 @@
     <div class="brand"><img src="icon.svg" alt="" width="20" height="20">DirScope</div>
     <nav id="crumbs" class="crumbs" aria-label="Treemap zoom"></nav>
     <div class="actions" id="actions" hidden>
+      <div class="seg" role="group" aria-label="View">
+        <button id="btn-2d" class="on" aria-pressed="true">Map</button>
+        <button id="btn-3d" aria-pressed="false">Volumes</button>
+      </div>
       <button id="btn-reveal" title="Show the selection in File Explorer">Show in Explorer</button>
       <button id="btn-delete" class="danger" title="Move the selection to the Recycle Bin (Del)">Recycle</button>
       <button id="btn-rescan" title="Scan the same folder again">Rescan</button>
@@ -54,6 +59,8 @@
     <section class="map-wrap" id="map-wrap">
       <canvas id="map"></canvas>
       <canvas id="overlay"></canvas>
+      <canvas id="scape" hidden></canvas>
+      <p id="scape-hint" class="hint" hidden>Drag to orbit · scroll to zoom · shift-drag to pan</p>
       <div id="tip" class="tip" hidden></div>
       <p id="map-empty" class="map-empty" hidden>This folder is empty.</p>
     </section>
@@ -74,7 +81,9 @@
     </form>
   </dialog>
 
+  <script src="three.min.js"></script>
   <script src="treemap.js"></script>
+  <script src="scape3d.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -83,5 +83,5 @@ const Treemap = (() => {
     return hit;
   }
 
-  return { layout, paint };
+  return { layout, paint, squarify };
 })();

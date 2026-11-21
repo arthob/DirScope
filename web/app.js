@@ -8,6 +8,7 @@ const st = {
   status: null, zoom: 0, zoomChain: [], zoomPath: "", selected: null,
   folders: new Map(), open: new Set([0]), rows: [],
   exts: [], extColor: new Map(), highlight: null, map: null, hit: null, hover: -1,
+  tree: null, view3d: false,
 };
 
 async function api(path, body) {
@@ -173,6 +174,7 @@ function select(row) {
   if (el) { el.classList.add("selected"); el.scrollIntoView({ block: "nearest" }); }
   renderStatus();
   drawOverlay();
+  if (st.view3d && Scape3D.ready) Scape3D.select(row && row.id);
 }
 
 // Expands every ancestor so a node picked on the treemap is visible in the tree.
@@ -225,9 +227,38 @@ async function loadMap() {
   mapSize = [w, h];
   const data = await api(`treemap?id=${st.zoom}&px=${w * h}`);
   st.zoomPath = data.path;
+  st.tree = data.tree;
   $("map-empty").hidden = data.tree[2] > 0;
   st.map = data.tree[2] > 0 ? Treemap.layout(data.tree, w, h) : { leaves: [], rects: new Map() };
   drawMap();
+  if (st.view3d) build3d();
+}
+
+// The 3D view reuses the same pruned tree, so both views show the same partition.
+function build3d() {
+  if (!Scape3D.ready) {
+    Scape3D.mount($("scape"), {
+      colorOf,
+      onPick: node => reveal(leafId(node)),
+      onHover: (box, ev) => box ? placeTip(box.node, ev) : ($("tip").hidden = true),
+    });
+  }
+  Scape3D.resize();
+  Scape3D.build(st.tree);
+  if (st.selected) Scape3D.select(st.selected.id);
+}
+
+function setView(on3d) {
+  st.view3d = on3d;
+  $("btn-2d").classList.toggle("on", !on3d);
+  $("btn-3d").classList.toggle("on", on3d);
+  $("btn-2d").setAttribute("aria-pressed", String(!on3d));
+  $("btn-3d").setAttribute("aria-pressed", String(on3d));
+  for (const id of ["map", "overlay"]) $(id).hidden = on3d;
+  $("scape").hidden = !on3d;
+  $("scape-hint").hidden = !on3d;
+  $("tip").hidden = true;
+  if (on3d) { build3d(); Scape3D.start(); } else Scape3D.stop();
 }
 
 function drawMap() {
@@ -276,9 +307,13 @@ function leafPath(n) {
 function moveTip(ev) {
   const i = leafAt(ev);
   if (i !== st.hover) { st.hover = i; drawOverlay(); }
-  const tip = $("tip"), leaf = st.map && st.map.leaves[i];
-  if (!leaf) { tip.hidden = true; return; }
-  const n = leaf.node;
+  const leaf = st.map && st.map.leaves[i];
+  if (!leaf) { $("tip").hidden = true; return; }
+  placeTip(leaf.node, ev);
+}
+
+function placeTip(n, ev) {
+  const tip = $("tip");
   const kind = n[3] === -2 ? "Small items, grouped" : n[3] === -1 ? "Folder" : "File";
   tip.innerHTML = "<strong></strong><span></span><span></span>";
   tip.children[0].textContent = n[3] === -2 ? n.parent[1] : n[1];
@@ -365,6 +400,8 @@ document.addEventListener("keydown", ev => {
   else if (ev.key === "Backspace" && st.zoomChain.length > 1) zoomTo(st.zoomChain[st.zoomChain.length - 2].id);
 });
 
+$("btn-2d").onclick = () => setView(false);
+$("btn-3d").onclick = () => setView(true);
 $("btn-reveal").onclick = () => st.selected && api("reveal", { id: st.selected.id });
 $("btn-delete").onclick = recycle;
 $("btn-rescan").onclick = () => startScan(st.status.root);
@@ -390,6 +427,7 @@ $("split").addEventListener("pointerdown", ev => {
 let resizeTimer;
 new ResizeObserver(() => {
   if ($("view-result").hidden || !st.map) return;
+  if (st.view3d && Scape3D.ready) Scape3D.resize();
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(loadMap, 150);
 }).observe($("map-wrap"));
